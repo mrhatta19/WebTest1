@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket Submission and Tracking System</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for better visibility */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #9ca3af;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <div id="app" class="min-h-screen">
+        <!-- Application content will be injected here by JavaScript -->
+    </div>
+
+    <script>
+        // --- Application State Management (Mimicking React useState) ---
+        const state = {
+            page: 'login', // 'login', 'form', 'allTickets', 'success'
+            username: 'user1', // Pre-fill for convenience
+            password: 'Password123', // Pre-fill for convenience
+            error: '',
+            currentTicket: null,
+            searchId: '',
+            searchResult: null,
+            // Ticket form state
+            description: '',
+            country: '',
+            phoneNumber: '',
+            emergency: '',
+            tickets: {}, // In-memory storage for tickets { [id]: ticketObject }
+            countries: [
+                'United States', 'HongKong', 'Canada', 'Australia', 'Germany',
+                'France', 'Japan', 'Singapore', 'Malaysia', 'Taiwan', 'China'
+            ]
+        };
+
+        // Utility Functions
+        const generateTicketId = () => 'TKT-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+        const getTodayDate = () => new Date().toISOString().split('T')[0];
+
+        /**
+         * Generic function to update state and re-render the application.
+         * @param {object} newState - Partial object containing state properties to update.
+         */
+        const setState = (newState) => {
+            Object.assign(state, newState);
+            render();
+        };
+
+        // --- View Rendering Functions ---
+
+        const renderLogin = () => {
+            return `
+                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md transform transition-all duration-500 hover:scale-[1.01]">
+                        <div class="flex items-center justify-center mb-6">
+                            <!-- Ticket Icon (SVG equivalent of Lucide Ticket) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-600">
+                                <path d="M4 11V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4M4 13v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4M2 12h20"/>
+                            </svg>
+                        </div>
+                        <h1 class="text-3xl font-extrabold text-center text-gray-800 mb-8">Support Ticket Login</h1>
+                        
+                        <form id="login-form">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 text-sm font-semibold mb-2" for="username">
+                                    Username
+                                </label>
+                                <input
+                                    type="text"
+                                    id="username"
+                                    value="${state.username}"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-4 focus:ring-indigo-200 transition duration-150"
+                                    placeholder="Enter username"
+                                    required
+                                />
+                                <small class="text-gray-500">Demo: user1</small>
+                            </div>
+                            
+                            <div class="mb-6">
+                                <label class="block text-gray-700 text-sm font-semibold mb-2" for="password">
+                                    Password
+                                </label>
+                                <input
+                                    type="password"
+                                    id="password"
+                                    value="${state.password}"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-4 focus:ring-indigo-200 transition duration-150"
+                                    placeholder="Enter password"
+                                    required
+                                />
+                                <small class="text-gray-500">Demo: Password123</small>
+                            </div>
+                            
+                            ${state.error ? `
+                                <div class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm font-medium animate-pulse">
+                                    ${state.error}
+                                </div>
+                            ` : ''}
+                            
+                            <button
+                                type="submit"
+                                class="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 font-bold shadow-md hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-indigo-300"
+                            >
+                                Login
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderForm = () => {
+            const countryOptions = state.countries.map(c => `
+                <option value="${c}" ${state.country === c ? 'selected' : ''}>${c}</option>
+            `).join('');
+
+            return `
+                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-8">
+                    <div class="max-w-4xl mx-auto">
+                        <div class="bg-white rounded-xl shadow-2xl p-6 sm:p-8 mb-6">
+                            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b pb-4">
+                                <h1 class="text-3xl font-extrabold text-gray-800 mb-4 sm:mb-0">Create New Ticket</h1>
+                                <div class="flex gap-2">
+                                    <button id="view-tickets-btn"
+                                        class="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition duration-200 text-sm font-semibold shadow-md">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4M4 13v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4M2 12h20"/></svg>
+                                        View All Tickets
+                                    </button>
+                                    <button id="logout-btn"
+                                        class="flex items-center gap-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition duration-200 text-sm font-semibold">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                                        Logout
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <form id="ticket-form" class="space-y-6">
+                                <div class="grid sm:grid-cols-2 gap-6">
+                                    <div class="sm:col-span-2">
+                                        <label class="block text-gray-700 text-sm font-semibold mb-2" for="description">
+                                            Description *
+                                        </label>
+                                        <textarea
+                                            id="description"
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-4 focus:ring-indigo-200 custom-scrollbar"
+                                            rows="4"
+                                            placeholder="Describe your issue in detail..."
+                                            required
+                                        >${state.description}</textarea>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-gray-700 text-sm font-semibold mb-2" for="country">
+                                            Country *
+                                        </label>
+                                        <select
+                                            id="country"
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-4 focus:ring-indigo-200 bg-white appearance-none"
+                                            required
+                                        >
+                                            <option value="">Select a country</option>
+                                            ${countryOptions}
+                                        </select>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="block text-gray-700 text-sm font-semibold mb-2" for="phone-number">
+                                            Phone Number *
+                                        </label>
+                                        <input
+                                            type="tel"
+                                            id="phone-number"
+                                            value="${state.phoneNumber}"
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-4 focus:ring-indigo-200"
+                                            placeholder="+1234567890"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-gray-700 text-sm font-semibold mb-3">
+                                            Date Request
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value="${getTodayDate()}"
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                                            disabled
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="block text-gray-700 text-sm font-semibold mb-3">
+                                            Emergency *
+                                        </label>
+                                        <div class="flex gap-6 items-center">
+                                            <label class="flex items-center gap-2 cursor-pointer">
+                                                <input type="radio" name="emergency" value="Yes" class="w-5 h-5 text-red-600 border-gray-300 focus:ring-red-500" ${state.emergency === 'Yes' ? 'checked' : ''} required>
+                                                <span class="text-gray-700 text-sm font-semibold">Yes (Urgent)</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 cursor-pointer">
+                                                <input type="radio" name="emergency" value="No" class="w-5 h-5 text-indigo-600 border-gray-300 focus:ring-indigo-500" ${state.emergency === 'No' ? 'checked' : ''} required>
+                                                <span class="text-gray-700 text-sm font-semibold">No (Standard)</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    class="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 font-bold shadow-xl hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-indigo-300"
+                                >
+                                    Submit Ticket
+                                </button>
+                            </form>
+                        </div>
+                        
+                        <!-- Search Section -->
+                        <div class="bg-white rounded-xl shadow-xl p-6 sm:p-8">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-3">Search Existing Ticket</h2>
+                            <form id="search-form">
+                                <div class="flex flex-col sm:flex-row gap-4 mb-4">
+                                    <input
+                                        type="text"
+                                        id="search-id"
+                                        value="${state.searchId}"
+                                        class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-4 focus:ring-green-200"
+                                        placeholder="Enter Ticket ID (e.g., TKT-167890123-456)"
+                                    />
+                                    <button
+                                        type="submit"
+                                        class="w-full sm:w-auto px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition duration-300 flex items-center justify-center gap-2 font-semibold shadow-md"
+                                    >
+                                        <!-- Search Icon (SVG equivalent of Lucide Search) -->
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg>
+                                        Search
+                                    </button>
+                                </div>
+                            </form>
+                            
+                            ${state.searchResult ? renderSearchResult() : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderSearchResult = () => {
+            if (state.searchResult.notFound) {
+                return `
+                    <div class="mt-4 p-4 border border-red-300 bg-red-50 rounded-lg">
+                        <p class="text-red-600 font-bold">Ticket not found. Please check the ID and try again.</p>
+                    </div>
+                `;
+            }
+
+            const ticket = state.searchResult;
+            const emergencyClass = ticket.emergency === 'Yes' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800';
+            
+            return `
+                <div class="mt-4 p-6 border border-gray-300 bg-gray-50 rounded-xl shadow-inner">
+                    <h3 class="font-extrabold text-xl text-indigo-700 mb-4 border-b pb-2">Result: ${ticket.id}</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <p><span class="font-semibold text-gray-700">ID:</span> <span class="font-mono">${ticket.id}</span></p>
+                        <p><span class="font-semibold text-gray-700">Status:</span> 
+                            <span class="ml-2 px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold shadow-sm">
+                                ${ticket.status}
+                            </span>
+                        </p>
+                        <p><span class="font-semibold text-gray-700">Country:</span> ${ticket.country}</p>
+                        <p><span class="font-semibold text-gray-700">Phone:</span> ${ticket.phoneNumber}</p>
+                        <p><span class="font-semibold text-gray-700">Date:</span> ${ticket.dateRequest}</p>
+                        <p><span class="font-semibold text-gray-700">Emergency:</span> 
+                            <span class="ml-2 px-3 py-1 rounded-full text-xs font-bold shadow-sm ${emergencyClass}">
+                                ${ticket.emergency}
+                            </span>
+                        </p>
+                        <p class="md:col-span-2 mt-2"><span class="font-semibold text-gray-700">Description:</span> <p class="mt-1 p-3 bg-white rounded-lg border">${ticket.description}</p></p>
+                        <p class="md:col-span-2"><span class="font-semibold text-gray-700">Created At:</span> ${ticket.createdAt}</p>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderSuccess = () => {
+            const ticket = state.currentTicket;
+            if (!ticket) return '';
+
+            const emergencyClass = ticket.emergency === 'Yes' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800';
+
+            return `
+                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-2xl">
+                        <div class="text-center mb-6">
+                            <div class="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4 animate-bounce">
+                                <!-- Checkmark SVG -->
+                                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                </svg>
+                            </div>
+                            <h1 class="text-3xl font-bold text-gray-800 mb-2">Ticket Created Successfully!</h1>
+                            <p class="text-gray-600 font-medium">Your request has been submitted and is being processed.</p>
+                        </div>
+                        
+                        <div class="bg-gray-50 rounded-xl p-6 mb-8 border border-green-200">
+                            <h2 class="text-xl font-extrabold text-gray-800 mb-4 border-b pb-2">Reference Details</h2>
+                            <div class="space-y-3 text-sm">
+                                <div class="flex justify-between items-center">
+                                    <span class="font-semibold text-gray-700">Ticket ID:</span>
+                                    <span class="font-mono text-indigo-600 text-lg p-1 bg-white rounded-md">${ticket.id}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="font-semibold text-gray-700">Status:</span>
+                                    <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold">
+                                        ${ticket.status}
+                                    </span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="font-semibold text-gray-700">Country:</span>
+                                    <span>${ticket.country}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="font-semibold text-gray-700">Phone:</span>
+                                    <span>${ticket.phoneNumber}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="font-semibold text-gray-700">Emergency:</span>
+                                    <span class="px-3 py-1 rounded-full text-xs font-bold ${emergencyClass}">
+                                        ${ticket.emergency}
+                                    </span>
+                                </div>
+                                <div class="pt-3 border-t">
+                                    <span class="font-semibold text-gray-700 block mb-1">Description:</span>
+                                    <p class="mt-1 text-gray-600 p-3 bg-white rounded-lg border">${ticket.description}</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex flex-col sm:flex-row gap-4">
+                            <button id="create-another-btn"
+                                class="flex-1 bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 transition font-bold shadow-lg focus:ring-4 focus:ring-indigo-300">
+                                Create Another Ticket
+                            </button>
+                            <button id="success-logout-btn"
+                                class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold">
+                                Logout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderAllTickets = () => {
+            const ticketArray = Object.values(state.tickets).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            const totalTickets = ticketArray.length;
+
+            const ticketRows = ticketArray.map((ticket, index) => {
+                const emergencyClass = ticket.emergency === 'Yes' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800';
+                const rowClass = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+
+                return `
+                    <tr class="border-b hover:bg-indigo-50/50 ${rowClass} transition duration-100">
+                        <td class="px-4 py-3 text-sm font-mono text-indigo-600">${ticket.id}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700 max-w-[200px] truncate" title="${ticket.description}">
+                            ${ticket.description}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${ticket.country}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${ticket.phoneNumber}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${ticket.dateRequest}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <span class="px-2 py-1 rounded-full text-xs font-bold ${emergencyClass}">
+                                ${ticket.emergency}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm">
+                            <span class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold">
+                                ${ticket.status}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            return `
+                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-8">
+                    <div class="max-w-7xl mx-auto">
+                        <div class="bg-white rounded-xl shadow-2xl p-6 sm:p-8">
+                            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b pb-4">
+                                <h1 class="text-3xl font-extrabold text-gray-800 mb-4 sm:mb-0">All Created Tickets</h1>
+                                <div class="flex gap-2">
+                                    <button id="create-ticket-btn"
+                                        class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition duration-200 text-sm font-semibold shadow-md">
+                                        Create New Ticket
+                                    </button>
+                                    <button id="all-tickets-logout-btn"
+                                        class="flex items-center gap-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition duration-200 text-sm font-semibold">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                                        Logout
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            ${totalTickets === 0 ? `
+                                <div class="text-center py-12">
+                                    <!-- Ticket Icon -->
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-300 mx-auto mb-4">
+                                        <path d="M4 11V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4M4 13v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4M2 12h20"/>
+                                    </svg>
+                                    <p class="text-gray-500 text-lg font-medium">No tickets created yet.</p>
+                                    <button id="create-first-ticket-btn"
+                                        class="mt-4 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition font-semibold shadow-md">
+                                        Create Your First Ticket
+                                    </button>
+                                </div>
+                            ` : `
+                                <div class="overflow-x-auto custom-scrollbar">
+                                    <table class="w-full border-collapse rounded-lg overflow-hidden">
+                                        <thead>
+                                            <tr class="bg-gray-200 border-b-2 border-gray-300">
+                                                <th class="px-4 py-3 text-left text-sm font-extrabold text-gray-700">Ticket ID</th>
+                                                <th class="px-4 py-3 text-left text-sm font-extrabold text-gray-700">Description</th>
+                                                <th class="px-4 py-3 text-left text-sm font-extrabold text-gray-700">Country</th>
+                                                <th class="px-4 py-3 text-left text-sm font-extrabold text-gray-700">Phone</th>
+                                                <th class="px-4 py-3 text-left text-sm font-extrabold text-gray-700">Date</th>
+                                                <th class="px-4 py-3 text-left text-sm font-extrabold text-gray-700">Emergency</th>
+                                                <th class="px-4 py-3 text-left text-sm font-extrabold text-gray-700">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${ticketRows}
+                                        </tbody>
+                                    </table>
+                                    
+                                    <div class="mt-4 p-3 bg-indigo-50 rounded-lg text-sm text-gray-700 font-semibold">
+                                        Total Tickets: <span class="font-bold text-indigo-700">${totalTickets}</span>
+                                    </div>
+                                </div>
+                            `}
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+        
+        // --- Event Handlers & Core Logic ---
+
+        const handleLogin = (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (username === 'user1' && password === 'Password123') {
+                setState({ username, password, error: '', page: 'form' });
+            } else {
+                setState({ username, password, error: 'Invalid username or password. Use demo credentials: user1 / Password123' });
+            }
+        };
+
+        const handleLogout = () => {
+            setState({ username: 'user1', password: 'Password123', page: 'login', error: '', searchResult: null, searchId: '' });
+        };
+
+        const handleFormSubmit = (e) => {
+            e.preventDefault();
+            
+            const description = document.getElementById('description').value.trim();
+            const country = document.getElementById('country').value;
+            const phoneNumber = document.getElementById('phone-number').value.trim();
+            const emergency = document.querySelector('input[name="emergency"]:checked')?.value;
+            
+            if (!description || !country || !phoneNumber || !emergency) {
+                // Since alert() is forbidden, use a soft error or a custom modal.
+                // For simplicity here, we'll rely on the 'required' HTML attribute and a console message.
+                console.error('Validation failed. Please fill in all required fields.');
+                return;
+            }
+
+            const ticketId = generateTicketId();
+            const newTicket = {
+                id: ticketId,
+                description,
+                country,
+                dateRequest: getTodayDate(),
+                phoneNumber,
+                emergency,
+                status: 'Open',
+                createdAt: new Date().toLocaleString()
+            };
+
+            const updatedTickets = { ...state.tickets, [ticketId]: newTicket };
+            
+            setState({
+                tickets: updatedTickets,
+                currentTicket: newTicket,
+                // Reset form state variables
+                description: '',
+                country: '',
+                phoneNumber: '',
+                emergency: '',
+                page: 'success'
+            });
+        };
+        
+        const handleSearch = (e) => {
+            e.preventDefault();
+            const searchInput = document.getElementById('search-id');
+            const idToSearch = searchInput ? searchInput.value.trim() : '';
+
+            if (!idToSearch) {
+                setState({ searchId: idToSearch, searchResult: { notFound: true } });
+                return;
+            }
+            
+            const ticket = state.tickets[idToSearch];
+            if (ticket) {
+                setState({ searchId: idToSearch, searchResult: ticket });
+            } else {
+                setState({ searchId: idToSearch, searchResult: { notFound: true } });
+            }
+        };
+        
+        // --- Dynamic Event Listener Setup ---
+
+        const setupEventListeners = () => {
+            const app = document.getElementById('app');
+
+            // 1. Login Page Events
+            if (state.page === 'login') {
+                const loginForm = document.getElementById('login-form');
+                if (loginForm) {
+                    loginForm.onsubmit = handleLogin;
+                    
+                    // Update state fields on input change
+                    document.getElementById('username').oninput = (e) => state.username = e.target.value;
+                    document.getElementById('password').oninput = (e) => state.password = e.target.value;
+                }
+            }
+
+            // 2. Form/Search Page Events
+            else if (state.page === 'form') {
+                // Header buttons
+                document.getElementById('view-tickets-btn')?.addEventListener('click', () => setState({ page: 'allTickets' }));
+                document.getElementById('logout-btn')?.addEventListener('click', handleLogout);
+
+                // Form submission
+                const ticketForm = document.getElementById('ticket-form');
+                if (ticketForm) {
+                    ticketForm.onsubmit = handleFormSubmit;
+                    
+                    // Live form state updates (for dynamic data if we had it, or to retain values across renders)
+                    document.getElementById('description').oninput = (e) => state.description = e.target.value;
+                    document.getElementById('country').onchange = (e) => state.country = e.target.value;
+                    document.getElementById('phone-number').oninput = (e) => state.phoneNumber = e.target.value;
+                    document.querySelectorAll('input[name="emergency"]').forEach(input => {
+                        input.onchange = (e) => state.emergency = e.target.value;
+                    });
+                }
+                
+                // Search form
+                const searchForm = document.getElementById('search-form');
+                if (searchForm) {
+                    searchForm.onsubmit = handleSearch;
+                    
+                    // Update searchId state field
+                    document.getElementById('search-id').oninput = (e) => {
+                        state.searchId = e.target.value;
+                        // Clear search result on typing
+                        if (state.searchResult) setState({ searchResult: null });
+                    };
+                }
+            }
+            
+            // 3. All Tickets Page Events
+            else if (state.page === 'allTickets') {
+                document.getElementById('create-ticket-btn')?.addEventListener('click', () => setState({ page: 'form' }));
+                document.getElementById('all-tickets-logout-btn')?.addEventListener('click', handleLogout);
+                document.getElementById('create-first-ticket-btn')?.addEventListener('click', () => setState({ page: 'form' }));
+            }
+
+            // 4. Success Page Events
+            else if (state.page === 'success') {
+                document.getElementById('create-another-btn')?.addEventListener('click', () => setState({ page: 'form' }));
+                document.getElementById('success-logout-btn')?.addEventListener('click', handleLogout);
+            }
+        };
+
+        // --- Main Render Loop ---
+        const render = () => {
+            const app = document.getElementById('app');
+            let content = '';
+
+            switch (state.page) {
+                case 'login':
+                    content = renderLogin();
+                    break;
+                case 'form':
+                    content = renderForm();
+                    break;
+                case 'allTickets':
+                    content = renderAllTickets();
+                    break;
+                case 'success':
+                    content = renderSuccess();
+                    break;
+                default:
+                    content = '<div>Page not found.</div>';
+            }
+
+            app.innerHTML = content;
+            setupEventListeners();
+        };
+
+        // Initial render on page load
+        window.onload = render;
+
+    </script>
+</body>
+</html>
